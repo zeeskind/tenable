@@ -4,11 +4,12 @@ This project limits requests from each client.
 
 ## Rule
 
-A client can make 5 requests in 5 seconds.
+A client can make 5 requests in any rolling 5-second period.
 
 - Requests 1 through 5 return `True`.
 - Request 6 returns `False`.
-- After 5 seconds, the next request starts a new window.
+- A rejected request is still counted.
+- Old requests leave the queue after 5 seconds.
 - Each client has its own limit.
 
 The client ID is in the URL:
@@ -25,11 +26,14 @@ The code keeps a dictionary of clients:
 client ID -> ClientState object
 ```
 
-Each `ClientState` object stores the request count, window start time, and its own lock.
+Each `ClientState` has:
 
-- Different clients use different locks, so they do not wait for each other.
-- Requests from the same client use the same lock, so their count stays correct.
-- A short separate lock is used only when a new client is added to the dictionary.
+- A queue of up to 5 request times
+- Its own lock
+
+When a request arrives, old times are removed from the queue. The new request time is then added, whether the request is accepted or rejected.
+
+Different clients use different locks, so they do not wait for each other. Requests from the same client use the same lock.
 
 ## Use it
 

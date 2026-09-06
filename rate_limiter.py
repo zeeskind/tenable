@@ -1,5 +1,6 @@
 """Simple per-client request limit."""
 
+from collections import deque
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -10,11 +11,10 @@ WINDOW_SECONDS = 5
 
 
 class ClientState:
-    """The data that belongs to one client."""
+    """The request times for one client."""
 
     def __init__(self):
-        self.window_start = None
-        self.request_count = 0
+        self.request_times = deque(maxlen=MAX_REQUESTS)
         self.lock = threading.Lock()
 
 
@@ -24,7 +24,7 @@ _new_client_lock = threading.Lock()
 
 
 def should_process_req(url: str) -> bool:
-    """Return True if this client can make another request."""
+    """Return True if this request is allowed."""
     client_id = _get_client_id(url)
     if client_id is None:
         return False
@@ -35,19 +35,18 @@ def should_process_req(url: str) -> bool:
     with client.lock:
         now = time.monotonic()
 
-        if (
-            client.window_start is None
-            or now - client.window_start >= WINDOW_SECONDS
+        # Remove requests that are no longer in the last five seconds.
+        while (
+            client.request_times
+            and now - client.request_times[0] >= WINDOW_SECONDS
         ):
-            client.window_start = now
-            client.request_count = 1
-            return True
+            client.request_times.popleft()
 
-        if client.request_count >= MAX_REQUESTS:
-            return False
+        allowed = len(client.request_times) < MAX_REQUESTS
 
-        client.request_count += 1
-        return True
+        # Store every request, including rejected requests.
+        client.request_times.append(now)
+        return allowed
 
 
 def _get_client(client_id: str) -> ClientState:

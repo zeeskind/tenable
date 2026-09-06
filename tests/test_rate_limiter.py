@@ -18,7 +18,7 @@ class TestRateLimiter(unittest.TestCase):
 
         self.assertEqual(results, [True, True, True, True, True, False])
 
-    def test_starts_new_window_after_five_seconds(self):
+    def test_old_requests_leave_the_window(self):
         url = "/get?client_id=client-1"
 
         with patch("rate_limiter.time.monotonic", return_value=0):
@@ -28,6 +28,23 @@ class TestRateLimiter(unittest.TestCase):
 
         with patch("rate_limiter.time.monotonic", return_value=5):
             self.assertTrue(should_process_req(url))
+
+    def test_rejected_requests_are_counted(self):
+        url = "/get?client_id=client-1"
+
+        # Five requests spread over four seconds fill the queue.
+        for request_time in (0, 1, 2, 3, 4):
+            with patch("rate_limiter.time.monotonic", return_value=request_time):
+                self.assertTrue(should_process_req(url))
+
+        # This request is rejected, but it is still added to the queue.
+        with patch("rate_limiter.time.monotonic", return_value=4.5):
+            self.assertFalse(should_process_req(url))
+
+        # The request at time 0 has expired, but the rejected request at 4.5
+        # keeps five requests in the last five seconds.
+        with patch("rate_limiter.time.monotonic", return_value=5.1):
+            self.assertFalse(should_process_req(url))
 
     def test_clients_have_separate_limits(self):
         with patch("rate_limiter.time.monotonic", return_value=0):
