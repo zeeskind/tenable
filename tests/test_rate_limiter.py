@@ -8,7 +8,7 @@ from rate_limiter import should_process_req
 
 class TestRateLimiter(unittest.TestCase):
     def setUp(self):
-        rate_limiter._client_windows.clear()
+        rate_limiter._clients.clear()
 
     def test_allows_five_and_rejects_sixth_request(self):
         url = "/get?client_id=client-1"
@@ -50,6 +50,15 @@ class TestRateLimiter(unittest.TestCase):
 
         self.assertEqual(results.count(True), 5)
         self.assertEqual(results.count(False), 95)
+
+    def test_only_one_state_object_is_created_for_a_client(self):
+        url = "/get?client_id=client-1"
+
+        with patch("rate_limiter.time.monotonic", return_value=0):
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                list(executor.map(should_process_req, [url] * 100))
+
+        self.assertEqual(len(rate_limiter._clients), 1)
 
 
 if __name__ == "__main__":
