@@ -55,12 +55,12 @@ class RateLimiter:
         if client_id is None:
             return False
 
-        now = self._clock()
-
         # The complete read/update operation must be atomic. Otherwise two
         # simultaneous requests could both observe the same request count and
-        # allow more than the configured limit.
+        # allow more than the configured limit. Read the clock inside the lock
+        # so a request waiting for the lock cannot use a stale timestamp.
         with self._lock:
+            now = self._clock()
             client_window = self._client_windows.get(client_id)
 
             if (
